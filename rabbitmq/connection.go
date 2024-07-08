@@ -1,7 +1,7 @@
 package rabbitmq
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"os"
 	"time"
 
@@ -10,20 +10,20 @@ import (
 
 func FailOnError(err error, msg string) {
 	if err != nil {
-		log.Panicf("%s: %s", msg, err)
+		logrus.Panicf("%s: %s", msg, err)
 	}
 }
 
 func Connect() (*amqp.Connection, *amqp.Channel) {
 	conn, err := tryConnect()
 	for err != nil {
-		log.Printf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
+		logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
 		conn, err = tryConnect()
 	}
 	ch, err := conn.Channel()
 	for err != nil {
-		log.Printf("Failed to open a channel. Retrying in 5 seconds...")
+		logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
 		ch, err = conn.Channel()
 	}

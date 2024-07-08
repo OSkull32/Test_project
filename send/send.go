@@ -2,7 +2,7 @@ package send
 
 import (
 	"context"
-	"log"
+	"github.com/sirupsen/logrus"
 	"os"
 	"test_project/rabbitmq"
 	"time"
@@ -46,7 +46,7 @@ func Send() {
 				Body:        []byte(body),
 			})
 		if err == nil {
-			log.Printf(" [x] Sent %s\n", body)
+			logrus.Infof(" [x] Sent %s\n", body)
 		}
 		rabbitmq.FailOnError(err, "Failed to publish a message")
 

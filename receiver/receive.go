@@ -1,7 +1,7 @@
 package receiver
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"os"
 	"test_project/rabbitmq"
 )
@@ -41,10 +41,10 @@ func Receive() {
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
+			logrus.Infof("Received a message: %s", d.Body)
 		}
 	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	logrus.Infof(" [*] Waiting for messages. To exit press CTRL+C")
 	<-forever
 }
