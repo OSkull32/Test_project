@@ -7,44 +7,50 @@ import (
 )
 
 func Receive() {
-	conn, ch := rabbitmq.Connect()
-	defer conn.Close()
-	defer ch.Close()
+	for {
+		conn, ch := rabbitmq.Connect()
 
-	queueName := os.Getenv("QUEUE_NAME")
-	if queueName == "" {
-		queueName = "hello"
-	}
+		defer func() {
+			conn.Close()
+			ch.Close()
+		}()
 
-	q, err := ch.QueueDeclare(
-		queueName, // name
-		false,     // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
-	)
-	rabbitmq.FailOnError(err, "Failed to declare a queue")
+		queueName := os.Getenv("QUEUE_NAME")
+		if queueName == "" {
+			queueName = "hello"
+		}
 
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	rabbitmq.FailOnError(err, "Failed to register a consumer")
+		q, err := ch.QueueDeclare(
+			queueName, // name
+			false,     // durable
+			false,     // delete when unused
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // arguments
+		)
+		if err != nil {
+			logrus.Errorf("Failed to declare a queue: %v", err)
+			continue
+		}
 
-	var forever chan struct{}
+		msgs, err := ch.Consume(
+			q.Name, // queue
+			"",     // consumer
+			true,   // auto-ack
+			false,  // exclusive
+			false,  // no-local
+			false,  // no-wait
+			nil,    // args
+		)
+		if err != nil {
+			logrus.Errorf("Failed to register a consumer: %v", err)
+			continue
+		}
 
-	go func() {
+		logrus.Infof(" [*] Waiting for messages. To exit press CTRL+C")
 		for d := range msgs {
 			logrus.Infof("Received a message: %s", d.Body)
 		}
-	}()
 
-	logrus.Infof(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	}
 }

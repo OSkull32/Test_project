@@ -10,7 +10,7 @@ import (
 
 func FailOnError(err error, msg string) {
 	if err != nil {
-		logrus.Panicf("%s: %s", msg, err)
+		logrus.Errorf("%s: %s", msg, err)
 	}
 }
 
