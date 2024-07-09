@@ -2,23 +2,19 @@ package receiver
 
 import (
 	"github.com/sirupsen/logrus"
-	"os"
 	"test_project/rabbitmq"
 )
 
-func Receive() {
+func Receive(env map[string]string) {
 	for {
-		conn, ch := rabbitmq.Connect()
+		conn, ch := rabbitmq.Connect(env)
 
 		defer func() {
 			conn.Close()
 			ch.Close()
 		}()
 
-		queueName := os.Getenv("QUEUE_NAME")
-		if queueName == "" {
-			queueName = "hello"
-		}
+		queueName := env["QUEUE_NAME"]
 
 		q, err := ch.QueueDeclare(
 			queueName, // name

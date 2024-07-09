@@ -30,3 +30,4 @@ rad.json
 #Test results file
 TestResults.xml
 .env
+stream/

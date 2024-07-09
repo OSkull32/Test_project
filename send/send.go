@@ -3,22 +3,18 @@ package send
 import (
 	"context"
 	"github.com/sirupsen/logrus"
-	"os"
 	"test_project/rabbitmq"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func Send() {
-	conn, ch := rabbitmq.Connect()
+func Send(env map[string]string) {
+	conn, ch := rabbitmq.Connect(env)
 	defer conn.Close()
 	defer ch.Close()
 
-	queueName := os.Getenv("QUEUE_NAME")
-	if queueName == "" {
-		queueName = "hello"
-	}
+	queueName := env["QUEUE_NAME"]
 
 	for {
 
@@ -37,8 +33,8 @@ func Send() {
 
 		if conn.IsClosed() || ch.IsClosed() {
 			logrus.Warn("Send: Connection or channel closed, attempting to reconnect...")
-			conn, ch = rabbitmq.Connect() // Attempt to reconnect
-			continue                      // Skip this iteration to retry in the next loop after reconnection
+			conn, ch = rabbitmq.Connect(env) // Attempt to reconnect
+			continue                         // Skip this iteration to retry in the next loop after reconnection
 		}
 
 		body := "Hello World!"
@@ -55,7 +51,7 @@ func Send() {
 			logrus.Errorf("Failed to publish a message: %v", err)
 			if conn.IsClosed() || ch.IsClosed() {
 				logrus.Warn("Attempting to reconnect after failed publish...")
-				conn, ch = rabbitmq.Connect() // Attempt to reconnect
+				conn, ch = rabbitmq.Connect(env) // Attempt to reconnect
 			}
 			continue // Skip this iteration to retry in the next loop after handling the error
 		}
