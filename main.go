@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"test_project/config"
 
 	"github.com/sirupsen/logrus"
 	"test_project/receiver"
@@ -13,7 +14,7 @@ import (
 func main() {
 	log := logrus.New()
 
-	env := LoadEnv()
+	env := config.LoadEnv()
 
 	// Запускаем функцию Send() асинхронно
 	go func() {

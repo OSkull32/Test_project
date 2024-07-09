@@ -4,9 +4,21 @@ services:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     restart: always
+    hostname: rabbitmq
     environment:
       - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_stream advertised_host localhost
     ports:
-      - 5552:5552
       - 15672:15672
       - 5672:5672
+
+  go-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go-service
+    depends_on:
+      - rabbitmq
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: go run main.go
