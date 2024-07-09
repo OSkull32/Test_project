@@ -1,6 +1,7 @@
 package rabbitmq
 
 import (
+	"context"
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"net/url"
@@ -47,4 +48,48 @@ func tryConnect(env map[string]string) (*amqp.Connection, error) {
 		return nil, err
 	}
 	return conn, nil
+}
+
+func InitQueue(ch *amqp.Channel, queueName string) {
+	_, err := ch.QueueDeclare(
+		queueName, // name
+		false,     // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	FailOnError(err, "Failed to declare a queue")
+}
+
+func PublishMessage(ch *amqp.Channel, queueName string, body string, ctx context.Context) {
+	err := ch.PublishWithContext(ctx,
+		"",        // exchange
+		queueName, // routing key
+		false,     // mandatory
+		false,     // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
+		})
+	if err != nil {
+		logrus.Errorf("Failed to publish a message: %v", err)
+	}
+}
+
+func ConsumeMessages(ch *amqp.Channel, queueName string) (<-chan amqp.Delivery, error) {
+	msgs, err := ch.Consume(
+		queueName, // queue
+		"",        // consumer
+		true,      // auto-ack
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
+	)
+	if err != nil {
+		logrus.Errorf("Failed to register a consumer: %v", err)
+		return nil, err
+	}
+	return msgs, nil
 }
