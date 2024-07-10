@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/sirupsen/logrus"
+	"net"
 	"net/url"
 	"time"
 
@@ -13,19 +14,21 @@ import (
 // InitRabbitMQ инициализирует новую структуру RabbitMQ с предоставленными переменными среды.
 // Он возвращает указатель на структуру RabbitMQ.
 func InitRabbitMQ(env map[string]string) *RabbitMQ {
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	res := &RabbitMQ{
 		env:    env,
 		cancel: cancel,
+		Ctx:    ctx,
 	}
 
-	res.Connect()
+	res.Connect(ctx)
 
 	return res
 }
 
 // RabbitMQ содержит конфигурацию и состояние соединения RabbitMQ.
 type RabbitMQ struct {
+	Ctx      context.Context
 	env      map[string]string // Environment variables for RabbitMQ configuration.
 	cancel   func()            // Function to cancel the context.
 	ConnAmqp *amqp.Connection  // Connection to RabbitMQ.
@@ -41,24 +44,36 @@ func FailOnError(err error, msg string) {
 
 // Connect пытается подключиться к RabbitMQ, используя переменные среды.
 // Он повторяет попытку соединения в случае неудачи каждые 5 секунд.
-func (r *RabbitMQ) Connect() {
+func (r *RabbitMQ) Connect(ctx context.Context) {
 	var err error
-	err = r.tryConnect()
+	err = r.tryConnect(ctx)
 	for err != nil {
-		logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
-		time.Sleep(5 * time.Second)
-		err = r.tryConnect()
+		select {
+		case <-ctx.Done():
+			logrus.Errorf("Context cancelled, stopping connection attempts")
+			return
+		default:
+			logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
+			time.Sleep(5 * time.Second)
+			err = r.tryConnect(ctx)
+		}
 	}
 	r.ChanAmqp, err = r.ConnAmqp.Channel()
 	for err != nil {
-		logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
-		time.Sleep(5 * time.Second)
-		r.ChanAmqp, err = r.ConnAmqp.Channel()
+		select {
+		case <-ctx.Done():
+			logrus.Errorf("Context cancelled, stopping channel opening attempts")
+			return
+		default:
+			logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
+			time.Sleep(5 * time.Second)
+			r.ChanAmqp, err = r.ConnAmqp.Channel()
+		}
 	}
 }
 
 // tryConnect пытается установить соединение с RabbitMQ, используя предоставленные учетные данные, и возвращает любую обнаруженную ошибку.
-func (r *RabbitMQ) tryConnect() error {
+func (r *RabbitMQ) tryConnect(ctx context.Context) error {
 	UserName := r.env["RABBITMQ_DEFAULT_USER"]
 	password := r.env["RABBITMQ_DEFAULT_PASS"]
 	HOST := r.env["RABBITMQ_HOST"]
@@ -69,7 +84,12 @@ func (r *RabbitMQ) tryConnect() error {
 		Host:   fmt.Sprintf("%s:%s", HOST, PORT),
 	}
 	var err error
-	r.ConnAmqp, err = amqp.Dial(rabbitmqURL.String())
+	r.ConnAmqp, err = amqp.DialConfig(rabbitmqURL.String(), amqp.Config{
+		Dial: func(network, addr string) (conn net.Conn, err error) {
+			dialer := &net.Dialer{}
+			return dialer.DialContext(ctx, network, addr) // Используем DialContext для учета контекста
+		},
+	})
 	if err != nil {
 		return err
 	}
