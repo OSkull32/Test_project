@@ -11,26 +11,30 @@ import (
 	"test_project/send"
 )
 
+// main — это точка входа приложения.
+// Он инициализирует настройки среды, запускает функции отправки и получения в отдельных горутинах,
+// и ждет сигнала прерывания или завершения, чтобы корректно завершить работу приложения.
 func main() {
-	log := logrus.New()
+	log := logrus.New() // Инициализируем новый logger.
 
-	env := config.LoadEnv()
+	env := config.LoadEnv() // Загрузка переменных среды.
 
-	// Запускаем функцию Send() асинхронно
+	// Запускаем функцию отправки в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Send()")
-		send.Send(env) // Removed error handling
+		send.Send(env)
 	}()
 
-	// Запускаем функцию Receive() асинхронно
+	// Запускаем функцию приема в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Receive()")
-		receiver.Receive(env) // Removed error handling
+		receiver.Receive(env)
 	}()
 
+	// Обработка прерывания (Ctrl+C) и сигналов завершения для корректного завершения работы.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	<-sigChan
+	<-sigChan // Block until a signal is received.
 	log.Println("Shutdown signal received, exiting...")
 }
