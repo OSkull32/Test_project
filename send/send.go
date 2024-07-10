@@ -15,9 +15,6 @@ func Send(env map[string]string) {
 	// Создание экземпляра RabbitMQ
 	rabbitMQ := rabbitmq.InitRabbitMQ(env)
 
-	// Установка соединения с RabbitMQ.
-	rabbitMQ.Connect()
-
 	// Соединение и канал закрыты при выходе из функции или возникновении ошибки.
 	defer func() {
 		rabbitMQ.ConnAmqp.Close()

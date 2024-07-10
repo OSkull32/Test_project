@@ -11,21 +11,24 @@ import (
 // При получении сообщения протоколируется тело сообщения.
 // Соединение и канал закрываются с помощью defer, чтобы гарантировать их закрытие при выходе из функции или обнаружении ошибки.
 func Receive(env map[string]string) {
+	// Создание экземпляра RabbitMQ
+	rabbitMQ := rabbitmq.InitRabbitMQ(env)
+
+	// Соединение и канал закрыты при выходе из функции или возникновении ошибки.
+	defer func() {
+		rabbitMQ.ConnAmqp.Close()
+		rabbitMQ.ChanAmqp.Close()
+	}()
+
 	for {
-		// Создание экземпляра RabbitMQ
-		rabbitMQ := rabbitmq.InitRabbitMQ(env)
-
-		// Установка соединения с RabbitMQ.
-		rabbitMQ.Connect()
-
-		// Соединение и канал закрыты при выходе из функции или возникновении ошибки.
-		defer func() {
-			rabbitMQ.ConnAmqp.Close()
-			rabbitMQ.ChanAmqp.Close()
-		}()
-
 		// Инициализируем очередь, чтобы начать получать сообщения.
 		rabbitMQ.InitQueue()
+
+		if rabbitMQ.ConnAmqp.IsClosed() || rabbitMQ.ChanAmqp.IsClosed() {
+			logrus.Warn("Send: Connection or channel closed, attempting to reconnect...")
+			rabbitMQ.Connect() // Используем метод Connect экземпляра
+			continue
+		}
 
 		// Начинаем получать сообщения из очереди.
 		msgs, err := rabbitMQ.ConsumeMessages()

@@ -18,6 +18,9 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 		env:    env,
 		cancel: cancel,
 	}
+
+	res.Connect()
+
 	return res
 }
 
