@@ -22,8 +22,8 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 type RabbitMQ struct {
 	env      map[string]string
 	cancel   func()
-	connAmqp *amqp.Connection
-	chanAmqp *amqp.Channel
+	ConnAmqp *amqp.Connection
+	ChanAmqp *amqp.Channel
 }
 
 func FailOnError(err error, msg string) {
@@ -32,21 +32,20 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-func (r *RabbitMQ) Connect() (*amqp.Connection, *amqp.Channel) {
+func (r *RabbitMQ) Connect() {
 	var err error
-	r.connAmqp, err = r.tryConnect()
+	r.ConnAmqp, err = r.tryConnect()
 	for err != nil {
 		logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
-		r.connAmqp, err = r.tryConnect()
+		r.ConnAmqp, err = r.tryConnect()
 	}
-	r.chanAmqp, err = r.connAmqp.Channel()
+	r.ChanAmqp, err = r.ConnAmqp.Channel()
 	for err != nil {
 		logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
-		r.chanAmqp, err = r.connAmqp.Channel()
+		r.ChanAmqp, err = r.ConnAmqp.Channel()
 	}
-	return r.connAmqp, r.chanAmqp
 }
 
 func (r *RabbitMQ) tryConnect() (*amqp.Connection, error) {
@@ -60,16 +59,16 @@ func (r *RabbitMQ) tryConnect() (*amqp.Connection, error) {
 		Host:   fmt.Sprintf("%s:%s", HOST, PORT),
 	}
 	var err error
-	r.connAmqp, err = amqp.Dial(rabbitmqURL.String())
+	r.ConnAmqp, err = amqp.Dial(rabbitmqURL.String())
 	if err != nil {
 		return nil, err
 	}
-	return r.connAmqp, nil
+	return r.ConnAmqp, nil
 }
 
 func (r *RabbitMQ) InitQueue() {
 	queueName := r.env["QUEUE_NAME"]
-	_, err := r.chanAmqp.QueueDeclare(
+	_, err := r.ChanAmqp.QueueDeclare(
 		queueName, // name
 		false,     // durable
 		false,     // delete when unused
@@ -83,7 +82,7 @@ func (r *RabbitMQ) InitQueue() {
 func (r *RabbitMQ) PublishMessage(ctx context.Context) {
 	queueName := r.env["QUEUE_NAME"]
 	body := r.env["MESSAGE_BODY"]
-	err := r.chanAmqp.PublishWithContext(ctx,
+	err := r.ChanAmqp.PublishWithContext(ctx,
 		"",        // exchange
 		queueName, // routing key
 		false,     // mandatory
@@ -98,7 +97,7 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context) {
 
 func (r *RabbitMQ) ConsumeMessages() (<-chan amqp.Delivery, error) {
 	queueName := r.env["QUEUE_NAME"]
-	msgs, err := r.chanAmqp.Consume(
+	msgs, err := r.ChanAmqp.Consume(
 		queueName, // queue
 		"",        // consumer
 		true,      // auto-ack

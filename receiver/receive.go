@@ -10,10 +10,10 @@ func Receive(env map[string]string) {
 		// Создание экземпляра RabbitMQ
 		rabbitMQ := rabbitmq.InitRabbitMQ(env)
 		// Вызов метода Connect
-		conn, ch := rabbitMQ.Connect()
+		rabbitMQ.Connect()
 		defer func() {
-			conn.Close()
-			ch.Close()
+			rabbitMQ.ConnAmqp.Close()
+			rabbitMQ.ChanAmqp.Close()
 		}()
 
 		rabbitMQ.InitQueue()

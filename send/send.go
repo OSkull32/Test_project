@@ -12,9 +12,9 @@ func Send(env map[string]string) {
 	rabbitMQ := rabbitmq.InitRabbitMQ(env)
 
 	// Вызов метода Connect
-	conn, ch := rabbitMQ.Connect()
-	defer conn.Close()
-	defer ch.Close()
+	rabbitMQ.Connect()
+	defer rabbitMQ.ConnAmqp.Close()
+	defer rabbitMQ.ChanAmqp.Close()
 
 	for {
 		rabbitMQ.InitQueue()
@@ -22,9 +22,9 @@ func Send(env map[string]string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if conn.IsClosed() || ch.IsClosed() {
+		if rabbitMQ.ConnAmqp.IsClosed() || rabbitMQ.ChanAmqp.IsClosed() {
 			logrus.Warn("Send: Connection or channel closed, attempting to reconnect...")
-			conn, ch = rabbitMQ.Connect() // Используем метод Connect экземпляра
+			rabbitMQ.Connect() // Используем метод Connect экземпляра
 			continue
 		}
 
