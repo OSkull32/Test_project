@@ -10,48 +10,66 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+func InitRabbitMQ(env map[string]string) *RabbitMQ {
+	_, cancel := context.WithCancel(context.Background())
+	res := &RabbitMQ{
+		env:    env,
+		cancel: cancel,
+	}
+	return res
+}
+
+type RabbitMQ struct {
+	env      map[string]string
+	cancel   func()
+	connAmqp *amqp.Connection
+	chanAmqp *amqp.Channel
+}
+
 func FailOnError(err error, msg string) {
 	if err != nil {
 		logrus.Errorf("%s: %s", msg, err)
 	}
 }
 
-func Connect(env map[string]string) (*amqp.Connection, *amqp.Channel) {
-	conn, err := tryConnect(env)
+func (r *RabbitMQ) Connect() (*amqp.Connection, *amqp.Channel) {
+	var err error
+	r.connAmqp, err = r.tryConnect()
 	for err != nil {
 		logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
-		conn, err = tryConnect(env)
+		r.connAmqp, err = r.tryConnect()
 	}
-	ch, err := conn.Channel()
+	r.chanAmqp, err = r.connAmqp.Channel()
 	for err != nil {
 		logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
 		time.Sleep(5 * time.Second)
-		ch, err = conn.Channel()
+		r.chanAmqp, err = r.connAmqp.Channel()
 	}
-	return conn, ch
+	return r.connAmqp, r.chanAmqp
 }
 
-func tryConnect(env map[string]string) (*amqp.Connection, error) {
-	UserName := env["RABBITMQ_DEFAULT_USER"]
-	password := env["RABBITMQ_DEFAULT_PASS"]
-	HOST := env["RABBITMQ_HOST"]
-	PORT := env["RABBITMQ_PORT"]
+func (r *RabbitMQ) tryConnect() (*amqp.Connection, error) {
+	UserName := r.env["RABBITMQ_DEFAULT_USER"]
+	password := r.env["RABBITMQ_DEFAULT_PASS"]
+	HOST := r.env["RABBITMQ_HOST"]
+	PORT := r.env["RABBITMQ_PORT"]
 	rabbitmqURL := &url.URL{
 		Scheme: "amqp",
 		User:   url.UserPassword(UserName, password),
 		Host:   fmt.Sprintf("%s:%s", HOST, PORT),
 	}
-
-	conn, err := amqp.Dial(rabbitmqURL.String())
+	var err error
+	r.connAmqp, err = amqp.Dial(rabbitmqURL.String())
 	if err != nil {
 		return nil, err
 	}
-	return conn, nil
+	return r.connAmqp, nil
 }
 
-func InitQueue(ch *amqp.Channel, queueName string) {
-	_, err := ch.QueueDeclare(
+func (r *RabbitMQ) InitQueue() {
+	queueName := r.env["QUEUE_NAME"]
+	_, err := r.chanAmqp.QueueDeclare(
 		queueName, // name
 		false,     // durable
 		false,     // delete when unused
@@ -62,8 +80,10 @@ func InitQueue(ch *amqp.Channel, queueName string) {
 	FailOnError(err, "Failed to declare a queue")
 }
 
-func PublishMessage(ch *amqp.Channel, queueName string, body string, ctx context.Context) {
-	err := ch.PublishWithContext(ctx,
+func (r *RabbitMQ) PublishMessage(ctx context.Context) {
+	queueName := r.env["QUEUE_NAME"]
+	body := r.env["MESSAGE_BODY"]
+	err := r.chanAmqp.PublishWithContext(ctx,
 		"",        // exchange
 		queueName, // routing key
 		false,     // mandatory
@@ -72,13 +92,13 @@ func PublishMessage(ch *amqp.Channel, queueName string, body string, ctx context
 			ContentType: "text/plain",
 			Body:        []byte(body),
 		})
-	if err != nil {
-		logrus.Errorf("Failed to publish a message: %v", err)
-	}
+	FailOnError(err, "Failed to publish a message")
+	logrus.Infof(" [x] Sent %s\n", body)
 }
 
-func ConsumeMessages(ch *amqp.Channel, queueName string) (<-chan amqp.Delivery, error) {
-	msgs, err := ch.Consume(
+func (r *RabbitMQ) ConsumeMessages() (<-chan amqp.Delivery, error) {
+	queueName := r.env["QUEUE_NAME"]
+	msgs, err := r.chanAmqp.Consume(
 		queueName, // queue
 		"",        // consumer
 		true,      // auto-ack

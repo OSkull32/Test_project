@@ -7,16 +7,18 @@ import (
 
 func Receive(env map[string]string) {
 	for {
-		conn, ch := rabbitmq.Connect(env)
+		// Создание экземпляра RabbitMQ
+		rabbitMQ := rabbitmq.InitRabbitMQ(env)
+		// Вызов метода Connect
+		conn, ch := rabbitMQ.Connect()
 		defer func() {
 			conn.Close()
 			ch.Close()
 		}()
 
-		queueName := env["QUEUE_NAME"]
-		rabbitmq.InitQueue(ch, queueName)
+		rabbitMQ.InitQueue()
 
-		msgs, err := rabbitmq.ConsumeMessages(ch, queueName)
+		msgs, err := rabbitMQ.ConsumeMessages()
 		if err != nil {
 			logrus.Errorf("Failed to register a consumer: %v", err)
 			continue
