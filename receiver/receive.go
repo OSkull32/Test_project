@@ -4,6 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"test_project/rabbitmq"
 	"test_project/storage"
+	"time"
 )
 
 // Receive инициализирует экземпляр RabbitMQ и постоянно прослушивает сообщения.
@@ -43,13 +44,14 @@ func Receive(env map[string]string) {
 		}
 
 		for d := range msgs {
-			message, errInsert := psqlDB.InsertMessage(env["MESSAGE_BODY"])
-			if errInsert != nil {
-				logrus.Errorf("InsertMessage: %s", err)
+			messageBody := d.Body
+			messageID, errInsert := psqlDB.InsertMessage(messageBody)
+			for errInsert != nil {
+				logrus.Errorf("Failed to insertMessage: %s", err)
+				time.Sleep(5 * time.Second)
+				messageID, errInsert = psqlDB.InsertMessage(messageBody)
 			}
-			if errInsert == nil {
-				logrus.Infof("Successful insert messageID = %v, messageBody = %s", message, d.Body)
-			}
+			logrus.Infof("Successful insert messageID = %v, messageBody = %s", messageID, messageBody)
 		}
 	}
 }

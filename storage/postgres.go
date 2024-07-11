@@ -61,7 +61,7 @@ func (p *PostgresDB) tryConnect() error {
 }
 
 // InsertMessage вставляет новое сообщение в таблицу сообщений и возвращает идентификатор нового сообщения.
-func (p *PostgresDB) InsertMessage(messageBody string) (int, error) {
+func (p *PostgresDB) InsertMessage(messageBody []byte) (int, error) {
 	var messageID int
 	query := `INSERT INTO message_schema.messages (message_body) VALUES ($1) RETURNING id`
 	err := p.DB.QueryRow(query, messageBody).Scan(&messageID)
