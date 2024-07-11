@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"test_project/receiver"
 	"test_project/send"
+	"test_project/storage"
 )
 
 // main — это точка входа приложения.
@@ -18,6 +19,12 @@ func main() {
 	log := logrus.New() // Инициализируем новый logger.
 
 	env := config.LoadEnv() // Загрузка переменных среды.
+
+	psqlDB, err := storage.NewPsqlDB(env)
+	if err != nil {
+		log.Fatalf("Postgresql init: %s", err)
+	}
+	defer psqlDB.Close()
 
 	// Запускаем функцию отправки в новой горутине, чтобы запустить ее одновременно.
 	go func() {

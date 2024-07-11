@@ -26,6 +26,7 @@ services:
 
   db:
     image: postgres:latest
+    hostname: postgres
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password

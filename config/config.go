@@ -22,7 +22,9 @@ func LoadEnv() map[string]string {
 		logrus.Fatalf("Error loading .env file: %v", err)
 	}
 
-	requiredEnv := []string{"RABBITMQ_DEFAULT_USER", "RABBITMQ_DEFAULT_PASS", "RABBITMQ_HOST", "RABBITMQ_PORT", "QUEUE_NAME", "MESSAGE_BODY"}
+	requiredEnv := []string{"RABBITMQ_DEFAULT_USER", "RABBITMQ_DEFAULT_PASS", "RABBITMQ_HOST", "RABBITMQ_PORT",
+		"QUEUE_NAME", "MESSAGE_BODY", "POSTGRES_DEFAULT_USER", "POSTGRES_DEFAULT_PASS", "POSTGRES_HOST",
+		"POSTGRES_PORT", "POSTGRES_DBNAME", "PG_DRIVER"}
 	envMap := make(map[string]string)
 	for _, envKey := range requiredEnv {
 		value := os.Getenv(envKey)
