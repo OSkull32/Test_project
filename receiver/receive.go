@@ -21,9 +21,9 @@ func Receive(env map[string]string) {
 		rabbitMQ.ChanAmqp.Close()
 	}()
 
-	psqlDB := storage.NewPsqlDB(env)
+	psqlDB := storage.InitPostgresDB(env)
 
-	defer psqlDB.Close()
+	defer psqlDB.DB.Close()
 
 	for {
 		// Инициализируем очередь, чтобы начать получать сообщения.
@@ -43,7 +43,7 @@ func Receive(env map[string]string) {
 		}
 
 		for d := range msgs {
-			message, errInsert := storage.InsertMessage(psqlDB, env["MESSAGE_BODY"])
+			message, errInsert := psqlDB.InsertMessage(env["MESSAGE_BODY"])
 			if errInsert != nil {
 				logrus.Errorf("InsertMessage: %s", err)
 			}
