@@ -5,6 +5,7 @@ import (
 	"fmt"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 func NewPsqlDB(env map[string]string) *sql.DB {
@@ -16,20 +17,27 @@ func NewPsqlDB(env map[string]string) *sql.DB {
 		env["POSTGRES_DEFAULT_PASS"],
 	)
 
-	db, err := sql.Open(env["PG_DRIVER"], dataSourceName)
-	if err != nil {
-		logrus.Fatalf("Postgresql init: %s", err)
-		return nil
-	}
+	var db *sql.DB
+	var err error
+	for {
+		db, err = sql.Open(env["PG_DRIVER"], dataSourceName)
+		if err != nil {
+			logrus.Errorf("Postgresql init error: %s", err)
+			time.Sleep(5 * time.Second) // Wait before retrying
+			continue
+		}
 
-	err = db.Ping()
-	if err != nil {
-		logrus.Fatalf("Postgresql init: %s", err)
-		return nil
-	}
-	logrus.Info("successful connection to the database")
+		err = db.Ping()
+		if err != nil {
+			logrus.Errorf("Postgresql ping error: %s", err)
+			db.Close()                  // Close the failed connection
+			time.Sleep(5 * time.Second) // Wait before retrying
+			continue
+		}
 
-	return db
+		logrus.Info("Successful connection to the database")
+		return db
+	}
 }
 
 // InsertMessage вставляет новое сообщение в таблицу сообщений и возвращает идентификатор нового сообщения.
