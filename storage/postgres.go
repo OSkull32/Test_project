@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	_ "github.com/lib/pq"
@@ -9,11 +10,13 @@ import (
 )
 
 func InitPostgresDB(env map[string]string) *PostgresDB {
+	ctx, cancel := context.WithCancel(context.Background())
 	res := &PostgresDB{
-		env: env,
+		env:    env,
+		cancel: cancel,
 	}
 
-	res.NewPsqlDB()
+	res.NewPsqlDB(ctx)
 
 	return res
 }
@@ -25,26 +28,24 @@ type PostgresDB struct {
 }
 
 // NewPsqlDB создает новое соединение с базой данных PostgreSQL
-func (p *PostgresDB) NewPsqlDB() {
+func (p *PostgresDB) NewPsqlDB(ctx context.Context) {
 	var err error
-	err = p.tryConnect()
-	if err != nil {
-		logrus.Errorf("Postgresql init error: %s", err)
-		time.Sleep(5 * time.Second) // Wait before retrying
-		err = p.tryConnect()
+	err = p.tryConnect(ctx)
+	for err != nil {
+		select {
+		case <-ctx.Done():
+			logrus.Errorf("Context cancelled, stopping connection attempts")
+			return
+		default:
+			logrus.Errorf("Postgresql init error: %s", err)
+			time.Sleep(5 * time.Second) // Wait before retrying
+			err = p.tryConnect(ctx)
+		}
 	}
-
-	err = p.DB.Ping()
-	if err != nil {
-		logrus.Errorf("Postgresql ping error: %s", err)
-		time.Sleep(5 * time.Second) // Wait before retrying
-		err = p.DB.Ping()
-	}
-
 	logrus.Info("Successful connection to the database")
 }
 
-func (p *PostgresDB) tryConnect() error {
+func (p *PostgresDB) tryConnect(ctx context.Context) error {
 	dataSourceName := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable password=%s",
 		p.env["POSTGRES_HOST"],
 		p.env["POSTGRES_PORT"],
@@ -57,7 +58,7 @@ func (p *PostgresDB) tryConnect() error {
 	if err != nil {
 		return err
 	}
-	return nil
+	return p.DB.PingContext(ctx)
 }
 
 // InsertMessage вставляет новое сообщение в таблицу сообщений и возвращает идентификатор нового сообщения.
