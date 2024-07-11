@@ -18,7 +18,22 @@ services:
     container_name: go-service
     depends_on:
       - rabbitmq
+      - db
     volumes:
       - .:/app
     working_dir: /app
     command: go run main.go
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: exampledb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
