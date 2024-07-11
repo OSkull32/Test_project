@@ -3,6 +3,7 @@ package receiver
 import (
 	"github.com/sirupsen/logrus"
 	"test_project/rabbitmq"
+	"test_project/storage"
 )
 
 // Receive инициализирует экземпляр RabbitMQ и постоянно прослушивает сообщения.
@@ -19,6 +20,10 @@ func Receive(env map[string]string) {
 		rabbitMQ.ConnAmqp.Close()
 		rabbitMQ.ChanAmqp.Close()
 	}()
+
+	psqlDB := storage.NewPsqlDB(env)
+
+	defer psqlDB.Close()
 
 	for {
 		// Инициализируем очередь, чтобы начать получать сообщения.
@@ -37,9 +42,14 @@ func Receive(env map[string]string) {
 			continue
 		}
 
-		logrus.Infof(" [*] Waiting for messages. To exit press CTRL+C")
 		for d := range msgs {
-			logrus.Infof("Received a message: %s", d.Body)
+			message, errInsert := storage.InsertMessage(psqlDB, env["MESSAGE_BODY"])
+			if errInsert != nil {
+				logrus.Errorf("InsertMessage: %s", err)
+			}
+			if errInsert == nil {
+				logrus.Infof("Successful insert messageID = %v, messageBody = %s", message, d.Body)
+			}
 		}
 	}
 }

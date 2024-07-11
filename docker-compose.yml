@@ -27,10 +27,6 @@ services:
   db:
     image: postgres:latest
     hostname: postgres
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: exampledb
     ports:
       - "5432:5432"
     volumes:
