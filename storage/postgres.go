@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// InitPostgresDB инициализирует новый экземпляр PostgresDB с заданными переменными среды.
+// Он устанавливает новое соединение с базой данных, используя предоставленный контекст для отмены.
+// Возвращает указатель на инициализированный экземпляр PostgresDB.
 func InitPostgresDB(env map[string]string) *PostgresDB {
 	ctx, cancel := context.WithCancel(context.Background())
 	res := &PostgresDB{
@@ -21,6 +24,8 @@ func InitPostgresDB(env map[string]string) *PostgresDB {
 	return res
 }
 
+// PostgresDB содержит соединение с базой данных, переменные среды и функцию отмены.
+// для прекращения попытки подключения к базе данных.
 type PostgresDB struct {
 	DB     *sql.DB
 	env    map[string]string
@@ -45,6 +50,9 @@ func (p *PostgresDB) NewPsqlDB(ctx context.Context) {
 	logrus.Info("Successful connection to the database")
 }
 
+// tryConnect пытается подключиться к базе данных PostgreSQL, используя конфигурацию
+// указанный в структуре PostgresDB. Он использует предоставленный контекст, чтобы разрешить отмену.
+// попытки подключения. Возвращает ошибку, если попытка подключения не удалась.
 func (p *PostgresDB) tryConnect(ctx context.Context) error {
 	dataSourceName := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable password=%s",
 		p.env["POSTGRES_HOST"],
