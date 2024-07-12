@@ -19,7 +19,7 @@ func InitPostgresDB(env map[string]string) *PostgresDB {
 		cancel: cancel,
 	}
 
-	res.ConnectPostgres(ctx)
+	go res.ConnectPostgres(ctx)
 	return res
 }
 

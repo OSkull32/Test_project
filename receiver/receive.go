@@ -15,7 +15,6 @@ import (
 func Receive(env map[string]string) {
 	// Создание экземпляра RabbitMQ
 	rabbitMQ := rabbitmq.InitRabbitMQ(env)
-
 	// Соединение и канал закрыты при выходе из функции или возникновении ошибки.
 	defer func() {
 		rabbitMQ.ConnAmqp.Close()
@@ -23,31 +22,20 @@ func Receive(env map[string]string) {
 	}()
 
 	psqlDB := storage.InitPostgresDB(env)
-
 	defer psqlDB.DB.Close()
 
 	for {
 		// Инициализируем очередь, чтобы начать получать сообщения.
 		rabbitMQ.InitQueue()
 
-		if rabbitMQ.ConnAmqp.IsClosed() || rabbitMQ.ChanAmqp.IsClosed() {
-			logrus.Warn("Send: Connection or channel closed, attempting to reconnect...")
-			rabbitMQ.ConnectRabbit(rabbitMQ.Ctx) // Используем метод Connect экземпляра
-			continue
-		}
-
 		// Начинаем получать сообщения из очереди.
-		msgs, err := rabbitMQ.ConsumeMessages()
-		if err != nil {
-			logrus.Errorf("Failed to register a consumer: %v", err)
-			continue
-		}
+		msgs := rabbitMQ.ConsumeMessages()
 
 		for d := range msgs {
 			messageBody := d.Body
 			messageID, errInsert := psqlDB.RecordMessage(messageBody)
 			for errInsert != nil {
-				logrus.Errorf("Failed to insertMessage: %s", err)
+				logrus.Errorf("Failed to insertMessage: %s", errInsert)
 				time.Sleep(5 * time.Second)
 				messageID, errInsert = psqlDB.RecordMessage(messageBody)
 			}

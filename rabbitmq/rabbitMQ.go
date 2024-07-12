@@ -18,17 +18,17 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 	res := &RabbitMQ{
 		env:    env,
 		cancel: cancel,
-		Ctx:    ctx,
+		ctx:    ctx,
 	}
 
-	res.ConnectRabbit(ctx)
+	go res.ConnectRabbit(ctx)
 
 	return res
 }
 
 // RabbitMQ содержит конфигурацию и состояние соединения RabbitMQ.
 type RabbitMQ struct {
-	Ctx      context.Context
+	ctx      context.Context
 	env      map[string]string // Environment variables for RabbitMQ configuration.
 	cancel   func()            // Function to cancel the context.
 	ConnAmqp *amqp.Connection  // Connection to RabbitMQ.
@@ -42,7 +42,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
-// Connect пытается подключиться к RabbitMQ, используя переменные среды.
+// ConnectRabbit пытается подключиться к RabbitMQ, используя переменные среды.
 // Он повторяет попытку соединения в случае неудачи каждые 5 секунд.
 func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
 	var err error
@@ -98,6 +98,10 @@ func (r *RabbitMQ) tryConnect(ctx context.Context) error {
 
 // InitQueue объявляет очередь на сервере RabbitMQ, используя переменные среды.
 func (r *RabbitMQ) InitQueue() {
+	if !r.CheckConnected() {
+		logrus.Warn("Connection or channel closed, attempting to reconnect...")
+		r.ConnectRabbit(r.ctx)
+	}
 	queueName := r.env["QUEUE_NAME"]
 	_, err := r.ChanAmqp.QueueDeclare(
 		queueName, // name
@@ -113,6 +117,10 @@ func (r *RabbitMQ) InitQueue() {
 // PublishMessage публикует сообщение в очередь RabbitMQ, используя переменные среды.
 // Для операции публикации используется контекст с тайм-аутом.
 func (r *RabbitMQ) PublishMessage(ctx context.Context) {
+	if !r.CheckConnected() {
+		logrus.Warn("Connection or channel closed, attempting to reconnect...")
+		r.ConnectRabbit(r.ctx)
+	}
 	queueName := r.env["QUEUE_NAME"]
 	body := r.env["MESSAGE_BODY"]
 	err := r.ChanAmqp.PublishWithContext(ctx,
@@ -125,12 +133,18 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context) {
 			Body:        []byte(body),
 		})
 	failOnError(err, "Failed to publish a message")
-	logrus.Infof(" [x] Sent %s\n", body)
+	if err == nil {
+		logrus.Infof(" [x] Sent %s\n", body)
+	}
 }
 
 // ConsumeMessages начинает получать сообщения из указанной очереди.
 // Он возвращает канал экземпляров доставки и все обнаруженные ошибки.
-func (r *RabbitMQ) ConsumeMessages() (<-chan amqp.Delivery, error) {
+func (r *RabbitMQ) ConsumeMessages() <-chan amqp.Delivery {
+	if !r.CheckConnected() {
+		logrus.Warn("Connection or channel closed, attempting to reconnect...")
+		r.ConnectRabbit(r.ctx)
+	}
 	queueName := r.env["QUEUE_NAME"]
 	msg, err := r.ChanAmqp.Consume(
 		queueName, // queue
@@ -143,7 +157,12 @@ func (r *RabbitMQ) ConsumeMessages() (<-chan amqp.Delivery, error) {
 	)
 	if err != nil {
 		logrus.Errorf("Failed to register a consumer: %v", err)
-		return nil, err
+		return nil
 	}
-	return msg, nil
+	return msg
+}
+
+func (r *RabbitMQ) CheckConnected() bool {
+	return r.ConnAmqp != nil && !r.ConnAmqp.IsClosed() &&
+		r.ChanAmqp != nil && !r.ChanAmqp.IsClosed()
 }
