@@ -21,7 +21,7 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 		Ctx:    ctx,
 	}
 
-	res.Connect(ctx)
+	res.ConnectRabbit(ctx)
 
 	return res
 }
@@ -36,7 +36,7 @@ type RabbitMQ struct {
 }
 
 // FailOnError регистрирует сообщение об ошибке, если возникает ошибка.
-func FailOnError(err error, msg string) {
+func failOnError(err error, msg string) {
 	if err != nil {
 		logrus.Errorf("%s: %s", msg, err)
 	}
@@ -44,7 +44,7 @@ func FailOnError(err error, msg string) {
 
 // Connect пытается подключиться к RabbitMQ, используя переменные среды.
 // Он повторяет попытку соединения в случае неудачи каждые 5 секунд.
-func (r *RabbitMQ) Connect(ctx context.Context) {
+func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
 	var err error
 	err = r.tryConnect(ctx)
 	for err != nil {
@@ -107,7 +107,7 @@ func (r *RabbitMQ) InitQueue() {
 		false,     // no-wait
 		nil,       // arguments
 	)
-	FailOnError(err, "Failed to declare a queue")
+	failOnError(err, "Failed to declare a queue")
 }
 
 // PublishMessage публикует сообщение в очередь RabbitMQ, используя переменные среды.
@@ -124,7 +124,7 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context) {
 			ContentType: "text/plain",
 			Body:        []byte(body),
 		})
-	FailOnError(err, "Failed to publish a message")
+	failOnError(err, "Failed to publish a message")
 	logrus.Infof(" [x] Sent %s\n", body)
 }
 

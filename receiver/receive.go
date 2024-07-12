@@ -32,7 +32,7 @@ func Receive(env map[string]string) {
 
 		if rabbitMQ.ConnAmqp.IsClosed() || rabbitMQ.ChanAmqp.IsClosed() {
 			logrus.Warn("Send: Connection or channel closed, attempting to reconnect...")
-			rabbitMQ.Connect(rabbitMQ.Ctx) // Используем метод Connect экземпляра
+			rabbitMQ.ConnectRabbit(rabbitMQ.Ctx) // Используем метод Connect экземпляра
 			continue
 		}
 
@@ -45,11 +45,11 @@ func Receive(env map[string]string) {
 
 		for d := range msgs {
 			messageBody := d.Body
-			messageID, errInsert := psqlDB.InsertMessage(messageBody)
+			messageID, errInsert := psqlDB.RecordMessage(messageBody)
 			for errInsert != nil {
 				logrus.Errorf("Failed to insertMessage: %s", err)
 				time.Sleep(5 * time.Second)
-				messageID, errInsert = psqlDB.InsertMessage(messageBody)
+				messageID, errInsert = psqlDB.RecordMessage(messageBody)
 			}
 			logrus.Infof("Successful insert messageID = %v, messageBody = %s", messageID, messageBody)
 		}

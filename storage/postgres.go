@@ -19,8 +19,7 @@ func InitPostgresDB(env map[string]string) *PostgresDB {
 		cancel: cancel,
 	}
 
-	res.NewPsqlDB(ctx)
-
+	res.ConnectPostgres(ctx)
 	return res
 }
 
@@ -32,8 +31,8 @@ type PostgresDB struct {
 	cancel func()
 }
 
-// NewPsqlDB создает новое соединение с базой данных PostgreSQL
-func (p *PostgresDB) NewPsqlDB(ctx context.Context) {
+// ConnectPostgres создает новое соединение с базой данных PostgreSQL
+func (p *PostgresDB) ConnectPostgres(ctx context.Context) {
 	var err error
 	err = p.tryConnect(ctx)
 	for err != nil {
@@ -69,8 +68,8 @@ func (p *PostgresDB) tryConnect(ctx context.Context) error {
 	return p.DB.PingContext(ctx)
 }
 
-// InsertMessage вставляет новое сообщение в таблицу сообщений и возвращает идентификатор нового сообщения.
-func (p *PostgresDB) InsertMessage(messageBody []byte) (int, error) {
+// RecordMessage записывает новое сообщение в таблицу сообщений и возвращает идентификатор нового сообщения.
+func (p *PostgresDB) RecordMessage(messageBody []byte) (int, error) {
 	var messageID int
 	query := `INSERT INTO message_schema.messages (message_body) VALUES ($1) RETURNING id`
 	err := p.DB.QueryRow(query, messageBody).Scan(&messageID)
