@@ -5,6 +5,8 @@ import (
 	"os/signal"
 	"syscall"
 	"test_project/config"
+	"test_project/rabbitmq"
+	"test_project/storage"
 
 	"github.com/sirupsen/logrus"
 	"test_project/receiver"
@@ -19,16 +21,22 @@ func main() {
 
 	env := config.LoadEnv() // Загрузка переменных среды.
 
+	r := rabbitmq.InitRabbitMQ(env)
+	psqlDB := storage.InitPostgresDB(env)
+
 	// Запускаем функцию отправки в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Send()")
-		send.Send(env)
+		send.Send(r)
+		defer r.ConnAmqp.Close()
 	}()
 
 	// Запускаем функцию приема в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Receive()")
-		receiver.Receive(env)
+		receiver.Receive(r, psqlDB)
+		defer r.ConnAmqp.Close()
+		defer psqlDB.DB.Close()
 	}()
 
 	// Обработка прерывания (Ctrl+C) и сигналов завершения для корректного завершения работы.

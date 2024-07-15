@@ -2,7 +2,7 @@ package send
 
 import (
 	"context"
-	"test_project/rabbitmq"
+	"github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -10,22 +10,21 @@ import (
 // В качестве входных данных для настройки соединения RabbitMQ принимается карта переменных среды.
 // Функция устанавливает соединение с RabbitMQ, инициализирует очередь, а затем входит в цикл для отправки сообщений.
 // Если соединение или канал закрыты, он пытается повторно подключиться, прежде чем продолжить отправку сообщений.
-func Send(env map[string]string) {
-	// Создание экземпляра RabbitMQ
-	rabbitMQ := rabbitmq.InitRabbitMQ(env)
-	// Соединение и канал закрыты при выходе из функции или возникновении ошибки.
-	defer func() {
-		rabbitMQ.ConnAmqp.Close()
-		rabbitMQ.ChanAmqp.Close()
-	}()
-
+func Send(i interfaceSend) {
 	for {
-		rabbitMQ.InitQueue()
-
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		rabbitMQ.PublishMessage(ctx)
+		message := "Hello World!"
+
+		err := i.PublishMessage(ctx, message)
+		if err != nil {
+			logrus.Errorf("Failed to insertMessage: %s", err)
+			time.Sleep(5 * time.Second)
+		} else {
+			logrus.Infof("Successful send message: %s", message)
+		}
+
 		time.Sleep(10 * time.Second)
 	}
 }

@@ -28,15 +28,16 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 
 // RabbitMQ содержит конфигурацию и состояние соединения RabbitMQ.
 type RabbitMQ struct {
-	ctx      context.Context
-	env      map[string]string // Environment variables for RabbitMQ configuration.
-	cancel   func()            // Function to cancel the context.
-	ConnAmqp *amqp.Connection  // Connection to RabbitMQ.
-	ChanAmqp *amqp.Channel     // Channel for RabbitMQ communication.
+	ctx          context.Context
+	env          map[string]string // Environment variables for RabbitMQ configuration.
+	cancel       func()            // Function to cancel the context.
+	ConnAmqp     *amqp.Connection  // Connection to RabbitMQ.
+	PubChanAmqp  *amqp.Channel     // Channel for publishing messages
+	ConsChanAmqp *amqp.Channel     // Channel for consuming messages
 }
 
 // FailOnError регистрирует сообщение об ошибке, если возникает ошибка.
-func failOnError(err error, msg string) {
+func FailOnError(err error, msg string) {
 	if err != nil {
 		logrus.Errorf("%s: %s", msg, err)
 	}
@@ -45,30 +46,84 @@ func failOnError(err error, msg string) {
 // ConnectRabbit пытается подключиться к RabbitMQ, используя переменные среды.
 // Он повторяет попытку соединения в случае неудачи каждые 5 секунд.
 func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
-	var err error
-	err = r.tryConnect(ctx)
-	for err != nil {
-		select {
-		case <-ctx.Done():
-			logrus.Errorf("Context cancelled, stopping connection attempts")
-			return
-		default:
-			logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
-			time.Sleep(5 * time.Second)
+	for {
+		if !r.CheckConnected() {
+			var err error
 			err = r.tryConnect(ctx)
+			for err != nil {
+				select {
+				case <-ctx.Done():
+					logrus.Errorf("Context cancelled, stopping connection attempts")
+					return
+				default:
+					logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
+					time.Sleep(5 * time.Second)
+					err = r.tryConnect(ctx)
+				}
+			}
+			logrus.Info("Successful connection to RabbitMQ")
 		}
 	}
-	r.ChanAmqp, err = r.ConnAmqp.Channel()
-	for err != nil {
-		select {
-		case <-ctx.Done():
-			logrus.Errorf("Context cancelled, stopping channel opening attempts")
-			return
-		default:
-			logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
-			time.Sleep(5 * time.Second)
-			r.ChanAmqp, err = r.ConnAmqp.Channel()
+}
+
+//
+//// CreateChannel создает канал для общения с RabbitMQ.
+//func (r *RabbitMQ) CreateChannel(ctx context.Context) {
+//	var err error
+//	if !r.CheckChannel() {
+//		r.ChanAmqp, err = r.ConnAmqp.Channel()
+//		for err != nil {
+//			select {
+//			case <-ctx.Done():
+//				logrus.Errorf("Context cancelled, stopping channel opening attempts")
+//				return
+//			default:
+//				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
+//				time.Sleep(5 * time.Second)
+//				r.ChanAmqp, err = r.ConnAmqp.Channel()
+//			}
+//		}
+//		r.InitQueue()
+//	}
+//}
+
+// CreatePubChannel creates a channel for publishing messages to RabbitMQ.
+func (r *RabbitMQ) CreatePubChannel(ctx context.Context) {
+	var err error
+	if r.PubChanAmqp == nil || r.PubChanAmqp.IsClosed() {
+		r.PubChanAmqp, err = r.ConnAmqp.Channel()
+		for err != nil {
+			select {
+			case <-ctx.Done():
+				logrus.Errorf("Context cancelled, stopping channel opening attempts")
+				return
+			default:
+				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
+				time.Sleep(5 * time.Second)
+				r.PubChanAmqp, err = r.ConnAmqp.Channel()
+			}
 		}
+		r.InitQueue()
+	}
+}
+
+// CreateConsChannel creates a channel for consuming messages from RabbitMQ.
+func (r *RabbitMQ) CreateConsChannel(ctx context.Context) {
+	var err error
+	if r.ConsChanAmqp == nil || r.ConsChanAmqp.IsClosed() {
+		r.ConsChanAmqp, err = r.ConnAmqp.Channel()
+		for err != nil {
+			select {
+			case <-ctx.Done():
+				logrus.Errorf("Context cancelled, stopping channel opening attempts")
+				return
+			default:
+				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
+				time.Sleep(5 * time.Second)
+				r.PubChanAmqp, err = r.ConnAmqp.Channel()
+			}
+		}
+		r.InitQueue()
 	}
 }
 
@@ -98,32 +153,42 @@ func (r *RabbitMQ) tryConnect(ctx context.Context) error {
 
 // InitQueue объявляет очередь на сервере RabbitMQ, используя переменные среды.
 func (r *RabbitMQ) InitQueue() {
-	if !r.CheckConnected() {
-		logrus.Warn("Connection or channel closed, attempting to reconnect...")
-		r.ConnectRabbit(r.ctx)
-	}
 	queueName := r.env["QUEUE_NAME"]
-	_, err := r.ChanAmqp.QueueDeclare(
-		queueName, // name
-		false,     // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
-	)
-	failOnError(err, "Failed to declare a queue")
+	if r.ConsChanAmqp != nil && !r.ConsChanAmqp.IsClosed() {
+		_, err := r.ConsChanAmqp.QueueDeclare(
+			queueName, // name
+			false,     // durable
+			false,     // delete when unused
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // arguments
+		)
+		FailOnError(err, "Failed to declare a queue")
+	} else {
+		_, err := r.PubChanAmqp.QueueDeclare(
+			queueName, // name
+			false,     // durable
+			false,     // delete when unused
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // arguments
+		)
+		FailOnError(err, "Failed to declare a queue")
+	}
 }
 
 // PublishMessage публикует сообщение в очередь RabbitMQ, используя переменные среды.
 // Для операции публикации используется контекст с тайм-аутом.
-func (r *RabbitMQ) PublishMessage(ctx context.Context) {
-	if !r.CheckConnected() {
-		logrus.Warn("Connection or channel closed, attempting to reconnect...")
-		r.ConnectRabbit(r.ctx)
+func (r *RabbitMQ) PublishMessage(ctx context.Context, body string) error {
+	for !r.CheckConnected() {
+		logrus.Warn("Connection closed, attempting to reconnect...")
+		time.Sleep(5 * time.Second)
 	}
+
+	r.CreatePubChannel(r.ctx)
+
 	queueName := r.env["QUEUE_NAME"]
-	body := r.env["MESSAGE_BODY"]
-	err := r.ChanAmqp.PublishWithContext(ctx,
+	err := r.PubChanAmqp.PublishWithContext(ctx,
 		"",        // exchange
 		queueName, // routing key
 		false,     // mandatory
@@ -132,21 +197,20 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context) {
 			ContentType: "text/plain",
 			Body:        []byte(body),
 		})
-	failOnError(err, "Failed to publish a message")
-	if err == nil {
-		logrus.Infof(" [x] Sent %s\n", body)
-	}
+	return err
 }
 
 // ConsumeMessages начинает получать сообщения из указанной очереди.
 // Он возвращает канал экземпляров доставки и все обнаруженные ошибки.
 func (r *RabbitMQ) ConsumeMessages() <-chan amqp.Delivery {
-	if !r.CheckConnected() {
-		logrus.Warn("Connection or channel closed, attempting to reconnect...")
-		r.ConnectRabbit(r.ctx)
+	for !r.CheckConnected() {
+		logrus.Warn("Connection closed, attempting to reconnect...")
+		time.Sleep(5 * time.Second)
 	}
+
+	r.CreateConsChannel(r.ctx)
 	queueName := r.env["QUEUE_NAME"]
-	msg, err := r.ChanAmqp.Consume(
+	msg, err := r.ConsChanAmqp.Consume(
 		queueName, // queue
 		"",        // consumer
 		true,      // auto-ack
@@ -163,6 +227,15 @@ func (r *RabbitMQ) ConsumeMessages() <-chan amqp.Delivery {
 }
 
 func (r *RabbitMQ) CheckConnected() bool {
-	return r.ConnAmqp != nil && !r.ConnAmqp.IsClosed() &&
-		r.ChanAmqp != nil && !r.ChanAmqp.IsClosed()
+	return r.ConnAmqp != nil && !r.ConnAmqp.IsClosed()
+}
+
+//func (r *RabbitMQ) CheckChannel() bool {
+//	return r.ChanAmqp != nil && !r.ChanAmqp.IsClosed()
+//}
+
+func (r *RabbitMQ) Shutdown() {
+	if r != nil {
+		r.cancel()
+	}
 }
