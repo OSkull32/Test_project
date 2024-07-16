@@ -1,9 +1,7 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
+	"context"
 	"test_project/config"
 	"test_project/rabbitmq"
 	"test_project/storage"
@@ -20,9 +18,16 @@ func main() {
 	log := logrus.New() // Инициализируем новый logger.
 
 	env := config.LoadEnv() // Загрузка переменных среды.
+	globalCtx, globalCancel := context.WithCancel(context.Background())
+	rabbitCtx, rabbit := rabbitmq.InitRabbitMQ(globalCtx, env)
+	psqlCtx, psqlDB := storage.InitPostgresDB(globalCtx, env)
 
-	rabbit := rabbitmq.InitRabbitMQ(env)
-	psqlDB := storage.InitPostgresDB(env)
+	defer func() {
+		log.Infoln("Shutting down...")
+		rabbit.Shutdown()
+		psqlDB.Shutdown()
+		globalCancel()
+	}()
 
 	// Запускаем функцию отправки в новой горутине, чтобы запустить ее одновременно.
 	go func() {
@@ -36,10 +41,18 @@ func main() {
 		receiver.Receive(rabbit, psqlDB)
 	}()
 
-	// Обработка прерывания (Ctrl+C) и сигналов завершения для корректного завершения работы.
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	for {
+		select {
+		case <-globalCtx.Done():
+			log.Infoln("globalCtx is done")
+			return
+		case <-rabbitCtx.Done():
+			log.Infoln("rabbitCtx is done")
+			return
+		case <-psqlCtx.Done():
+			log.Infoln("psqlCtx is done")
+			return
+		}
 
-	<-sigChan // Block until a signal is received.
-	log.Println("Shutdown signal received, exiting...")
+	}
 }

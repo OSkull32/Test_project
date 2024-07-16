@@ -12,15 +12,15 @@ import (
 // InitPostgresDB инициализирует новый экземпляр PostgresDB с заданными переменными среды.
 // Он устанавливает новое соединение с базой данных, используя предоставленный контекст для отмены.
 // Возвращает указатель на инициализированный экземпляр PostgresDB.
-func InitPostgresDB(env map[string]string) *PostgresDB {
-	ctx, cancel := context.WithCancel(context.Background())
+func InitPostgresDB(globalCtx context.Context, env map[string]string) (context.Context, *PostgresDB) {
+	ctx, cancel := context.WithCancel(globalCtx)
 	res := &PostgresDB{
 		env:    env,
 		cancel: cancel,
 	}
 
 	go res.ConnectPostgres(ctx)
-	return res
+	return ctx, res
 }
 
 // PostgresDB содержит соединение с базой данных, переменные среды и функцию отмены.
@@ -42,7 +42,7 @@ func (p *PostgresDB) ConnectPostgres(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					logrus.Errorf("Context cancelled, stopping connection attempts")
-					p.shutdown()
+					return
 				default:
 					logrus.Errorf("Failed to connect to PostgresSQL. Retrying in 5 seconds...")
 					time.Sleep(5 * time.Second)
@@ -91,7 +91,7 @@ func (p *PostgresDB) CheckConnected() bool {
 	return true
 }
 
-func (p *PostgresDB) shutdown() {
+func (p *PostgresDB) Shutdown() {
 	logrus.Info("Closing connection to the database")
 	p.cancel()
 }

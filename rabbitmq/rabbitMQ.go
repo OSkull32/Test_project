@@ -13,8 +13,8 @@ import (
 
 // InitRabbitMQ инициализирует новую структуру RabbitMQ с предоставленными переменными среды.
 // Он возвращает указатель на структуру RabbitMQ.
-func InitRabbitMQ(env map[string]string) *RabbitMQ {
-	ctx, cancel := context.WithCancel(context.Background())
+func InitRabbitMQ(globalCtx context.Context, env map[string]string) (context.Context, *RabbitMQ) {
+	ctx, cancel := context.WithCancel(globalCtx)
 	res := &RabbitMQ{
 		env:    env,
 		cancel: cancel,
@@ -23,7 +23,7 @@ func InitRabbitMQ(env map[string]string) *RabbitMQ {
 
 	go res.ConnectRabbit(ctx)
 
-	return res
+	return ctx, res
 }
 
 // RabbitMQ содержит конфигурацию и состояние соединения RabbitMQ.
@@ -57,7 +57,7 @@ func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					logrus.Errorf("Context cancelled, stopping connection attempts")
-					r.shutdown()
+					return
 				default:
 					logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
 					time.Sleep(5 * time.Second)
@@ -137,7 +137,7 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context, body string) error {
 	}
 
 	r.PubChanAmqp = r.CreateChannel(r.ctx, r.PubChanAmqp)
-
+	r.Shutdown()
 	queueName := r.env["QUEUE_NAME"]
 	err := r.PubChanAmqp.PublishWithContext(ctx,
 		"",        // exchange
@@ -185,7 +185,7 @@ func CheckChannel(chann *amqp.Channel) bool {
 	return chann != nil && !chann.IsClosed()
 }
 
-func (r *RabbitMQ) shutdown() {
+func (r *RabbitMQ) Shutdown() {
 	logrus.Info("Closing connection to the RabbitMQ")
 	r.cancel()
 }
