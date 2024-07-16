@@ -66,65 +66,25 @@ func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
 	}
 }
 
-//
-//// CreateChannel создает канал для общения с RabbitMQ.
-//func (r *RabbitMQ) CreateChannel(ctx context.Context) {
-//	var err error
-//	if !r.CheckChannel() {
-//		r.ChanAmqp, err = r.ConnAmqp.Channel()
-//		for err != nil {
-//			select {
-//			case <-ctx.Done():
-//				logrus.Errorf("Context cancelled, stopping channel opening attempts")
-//				return
-//			default:
-//				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
-//				time.Sleep(5 * time.Second)
-//				r.ChanAmqp, err = r.ConnAmqp.Channel()
-//			}
-//		}
-//		r.InitQueue()
-//	}
-//}
-
-// CreatePubChannel creates a channel for publishing messages to RabbitMQ.
-func (r *RabbitMQ) CreatePubChannel(ctx context.Context) {
+// CreateChannel создает канал для общения с RabbitMQ.
+func (r *RabbitMQ) CreateChannel(ctx context.Context, chann *amqp.Channel) *amqp.Channel {
 	var err error
-	if r.PubChanAmqp == nil || r.PubChanAmqp.IsClosed() {
-		r.PubChanAmqp, err = r.ConnAmqp.Channel()
+	if !CheckChannel(chann) {
+		chann, err = r.ConnAmqp.Channel()
 		for err != nil {
 			select {
 			case <-ctx.Done():
 				logrus.Errorf("Context cancelled, stopping channel opening attempts")
-				return
+				return nil
 			default:
 				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
 				time.Sleep(5 * time.Second)
-				r.PubChanAmqp, err = r.ConnAmqp.Channel()
+				chann, err = r.ConnAmqp.Channel()
 			}
 		}
-		r.InitQueue()
+		r.InitQueue(chann)
 	}
-}
-
-// CreateConsChannel creates a channel for consuming messages from RabbitMQ.
-func (r *RabbitMQ) CreateConsChannel(ctx context.Context) {
-	var err error
-	if r.ConsChanAmqp == nil || r.ConsChanAmqp.IsClosed() {
-		r.ConsChanAmqp, err = r.ConnAmqp.Channel()
-		for err != nil {
-			select {
-			case <-ctx.Done():
-				logrus.Errorf("Context cancelled, stopping channel opening attempts")
-				return
-			default:
-				logrus.Errorf("Failed to open a channel. Retrying in 5 seconds...")
-				time.Sleep(5 * time.Second)
-				r.PubChanAmqp, err = r.ConnAmqp.Channel()
-			}
-		}
-		r.InitQueue()
-	}
+	return chann
 }
 
 // tryConnect пытается установить соединение с RabbitMQ, используя предоставленные учетные данные, и возвращает любую обнаруженную ошибку.
@@ -152,29 +112,17 @@ func (r *RabbitMQ) tryConnect(ctx context.Context) error {
 }
 
 // InitQueue объявляет очередь на сервере RabbitMQ, используя переменные среды.
-func (r *RabbitMQ) InitQueue() {
+func (r *RabbitMQ) InitQueue(chann *amqp.Channel) {
 	queueName := r.env["QUEUE_NAME"]
-	if r.ConsChanAmqp != nil && !r.ConsChanAmqp.IsClosed() {
-		_, err := r.ConsChanAmqp.QueueDeclare(
-			queueName, // name
-			false,     // durable
-			false,     // delete when unused
-			false,     // exclusive
-			false,     // no-wait
-			nil,       // arguments
-		)
-		FailOnError(err, "Failed to declare a queue")
-	} else {
-		_, err := r.PubChanAmqp.QueueDeclare(
-			queueName, // name
-			false,     // durable
-			false,     // delete when unused
-			false,     // exclusive
-			false,     // no-wait
-			nil,       // arguments
-		)
-		FailOnError(err, "Failed to declare a queue")
-	}
+	_, err := chann.QueueDeclare(
+		queueName, // name
+		false,     // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	FailOnError(err, "Failed to declare a queue")
 }
 
 // PublishMessage публикует сообщение в очередь RabbitMQ, используя переменные среды.
@@ -185,7 +133,7 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context, body string) error {
 		time.Sleep(5 * time.Second)
 	}
 
-	r.CreatePubChannel(r.ctx)
+	r.PubChanAmqp = r.CreateChannel(r.ctx, r.PubChanAmqp)
 
 	queueName := r.env["QUEUE_NAME"]
 	err := r.PubChanAmqp.PublishWithContext(ctx,
@@ -208,7 +156,7 @@ func (r *RabbitMQ) ConsumeMessages() <-chan amqp.Delivery {
 		time.Sleep(5 * time.Second)
 	}
 
-	r.CreateConsChannel(r.ctx)
+	r.ConsChanAmqp = r.CreateChannel(r.ctx, r.ConsChanAmqp)
 	queueName := r.env["QUEUE_NAME"]
 	msg, err := r.ConsChanAmqp.Consume(
 		queueName, // queue
@@ -230,9 +178,9 @@ func (r *RabbitMQ) CheckConnected() bool {
 	return r.ConnAmqp != nil && !r.ConnAmqp.IsClosed()
 }
 
-//func (r *RabbitMQ) CheckChannel() bool {
-//	return r.ChanAmqp != nil && !r.ChanAmqp.IsClosed()
-//}
+func CheckChannel(chann *amqp.Channel) bool {
+	return chann != nil && !chann.IsClosed()
+}
 
 func (r *RabbitMQ) Shutdown() {
 	if r != nil {

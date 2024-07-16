@@ -28,15 +28,12 @@ func main() {
 	go func() {
 		log.Infoln("Starting Send()")
 		send.Send(r)
-		defer r.ConnAmqp.Close()
 	}()
 
 	// Запускаем функцию приема в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Receive()")
 		receiver.Receive(r, psqlDB)
-		defer r.ConnAmqp.Close()
-		defer psqlDB.DB.Close()
 	}()
 
 	// Обработка прерывания (Ctrl+C) и сигналов завершения для корректного завершения работы.
