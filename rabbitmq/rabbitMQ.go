@@ -46,6 +46,9 @@ func FailOnError(err error, msg string) {
 // ConnectRabbit пытается подключиться к RabbitMQ, используя переменные среды.
 // Он повторяет попытку соединения в случае неудачи каждые 5 секунд.
 func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
+	defer r.ConnAmqp.Close()
+	defer r.PubChanAmqp.Close()
+	defer r.ConsChanAmqp.Close()
 	for {
 		if !r.CheckConnected() {
 			var err error
@@ -54,7 +57,7 @@ func (r *RabbitMQ) ConnectRabbit(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					logrus.Errorf("Context cancelled, stopping connection attempts")
-					return
+					r.shutdown()
 				default:
 					logrus.Errorf("Failed to connect to RabbitMQ. Retrying in 5 seconds...")
 					time.Sleep(5 * time.Second)
@@ -182,8 +185,7 @@ func CheckChannel(chann *amqp.Channel) bool {
 	return chann != nil && !chann.IsClosed()
 }
 
-func (r *RabbitMQ) Shutdown() {
-	if r != nil {
-		r.cancel()
-	}
+func (r *RabbitMQ) shutdown() {
+	logrus.Info("Closing connection to the RabbitMQ")
+	r.cancel()
 }

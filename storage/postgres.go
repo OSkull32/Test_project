@@ -33,20 +33,25 @@ type PostgresDB struct {
 
 // ConnectPostgres создает новое соединение с базой данных PostgreSQL
 func (p *PostgresDB) ConnectPostgres(ctx context.Context) {
-	var err error
-	err = p.tryConnect(ctx)
-	for err != nil {
-		select {
-		case <-ctx.Done():
-			logrus.Errorf("Context cancelled, stopping connection attempts")
-			return
-		default:
-			logrus.Errorf("Postgresql init error: %s", err)
-			time.Sleep(5 * time.Second) // Wait before retrying
+	defer p.DB.Close()
+	for {
+		if !p.CheckConnected() {
+			var err error
 			err = p.tryConnect(ctx)
+			for err != nil {
+				select {
+				case <-ctx.Done():
+					logrus.Errorf("Context cancelled, stopping connection attempts")
+					p.shutdown()
+				default:
+					logrus.Errorf("Failed to connect to PostgresSQL. Retrying in 5 seconds...")
+					time.Sleep(5 * time.Second)
+					err = p.tryConnect(ctx)
+				}
+			}
+			logrus.Info("Successful connection to the database")
 		}
 	}
-	logrus.Info("Successful connection to the database")
 }
 
 // tryConnect пытается подключиться к базе данных PostgreSQL, используя конфигурацию
@@ -77,4 +82,16 @@ func (p *PostgresDB) RecordMessage(messageBody []byte) (int, error) {
 		return 0, err
 	}
 	return messageID, nil
+}
+
+func (p *PostgresDB) CheckConnected() bool {
+	if p.DB == nil {
+		return false
+	}
+	return true
+}
+
+func (p *PostgresDB) shutdown() {
+	logrus.Info("Closing connection to the database")
+	p.cancel()
 }

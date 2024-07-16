@@ -21,19 +21,19 @@ func main() {
 
 	env := config.LoadEnv() // Загрузка переменных среды.
 
-	r := rabbitmq.InitRabbitMQ(env)
+	rabbit := rabbitmq.InitRabbitMQ(env)
 	psqlDB := storage.InitPostgresDB(env)
 
 	// Запускаем функцию отправки в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Send()")
-		send.Send(r)
+		send.Send(rabbit)
 	}()
 
 	// Запускаем функцию приема в новой горутине, чтобы запустить ее одновременно.
 	go func() {
 		log.Infoln("Starting Receive()")
-		receiver.Receive(r, psqlDB)
+		receiver.Receive(rabbit, psqlDB)
 	}()
 
 	// Обработка прерывания (Ctrl+C) и сигналов завершения для корректного завершения работы.
