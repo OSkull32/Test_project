@@ -137,7 +137,6 @@ func (r *RabbitMQ) PublishMessage(ctx context.Context, body string) error {
 	}
 
 	r.PubChanAmqp = r.CreateChannel(r.ctx, r.PubChanAmqp)
-	r.Shutdown()
 	queueName := r.env["QUEUE_NAME"]
 	err := r.PubChanAmqp.PublishWithContext(ctx,
 		"",        // exchange
